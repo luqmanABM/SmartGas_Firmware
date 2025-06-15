@@ -755,11 +755,11 @@ float convertFlowToJoules(float butaneSLPM) {
     // Convert butane-only flow rate to LPG total
     float LPG_SLPM = butaneSLPM * (100.0 / 70.0); // Adjust for 70% butane, 30% propane
 
-    // Convert SLPM to m³/s
+    // Convert SLPM to mÂ³/s
     float LPG_m3_per_s = LPG_SLPM / (1000.0 * 60.0);
 
-    // Energy conversion factor for LPG (MJ/m³)
-    float LPG_enthalpy = 102.9e6; // 102.9 MJ/m³ converted to J/m³
+    // Energy conversion factor for LPG (MJ/mÂ³)
+    float LPG_enthalpy = 102.9e6; // 102.9 MJ/mÂ³ converted to J/mÂ³
 
     // Calculate total energy (Joules per second)
     return LPG_m3_per_s * LPG_enthalpy / 1000; // Joules per second (Watts)
@@ -879,7 +879,35 @@ void LoadOrInitializeEEPROM(void) {
 // Main Routine Activity
 void MainActivity(void)
 {
-    pBattV = (uint16_t)getBattery();
+    // Inlined code for getBattery() starts
+	ADPCH = 0x0C; // ADC_CHANNEL_ANB4 for battV: RB4
+	
+	__delay_ms(10); 
+	
+	ADCON0bits.ADGO = 1; // Start conversion
+	
+	while (ADCON0bits.ADGO) // Wait for conversion to complete
+	{
+	// Loop until ADGO is cleared
+	}
+	
+	// Get ADC result
+	int16_t adcResult_batt; // adc_result_t is int16_t
+	adcResult_batt = ((int16_t)(((uint16_t)ADRESH << 8) | ADRESL));
+	
+	// Convert ADC result to voltage (2.048V reference, 12-bit ADC)
+	float adcVoltage_batt = (adcResult_batt * 2.048f) / 4095.0f;
+	
+	// voltage divider
+	float batteryVoltage_batt = adcVoltage_batt * (909.0f + 806.0f) / 806.0f;
+	
+	// Convert voltage to measurement in millivolts and adjust
+	float batteryMeasurement_val; 
+	batteryMeasurement_val = (batteryVoltage_batt * 1000.0f) - 20.0f; 
+	
+	pBattV = (uint16_t)batteryMeasurement_val; // Assign to global pBattV
+   	// Inlined code for getBattery() ends
+
     FlowAndTankMeasurement();
     sendPings(); // Send data regardless of the condition
     //sendWakeUp();
