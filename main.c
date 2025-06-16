@@ -1063,7 +1063,54 @@ void MainActivity(void)
     uint16_t scaledPercentage = (uint16_t)(percentage * 100.0);
     tankRemainingPercentage = scaledPercentage;
     // Inlined FlowAndTankMeasurement() ends
-    sendPings(); // Send data regardless of the condition
+      // Inlined sendPings() starts (with packAlarmFlags also inlined within this block)
+    // Original UART3_IsTxReady() call is preserved:
+    if (UART3_IsTxReady()) 
+    {
+        // Inlined packAlarmFlags(alarms):
+        uint8_t pAlarm = (alarms.aGeneral << 5) | (alarms.aBatt << 4) | (alarms.aTank << 3) |
+                         (alarms.aBal << 2) | (alarms.aValve << 1) | alarms.aDemo;
+        
+        // Checksum calculation (remains as is from original sendPings, with explicit byte casts for clarity):
+        uint8_t CS = (uint8_t)(
+                               (uint8_t)pAlarm + 
+                               (uint8_t)(tankRemainingPercentage & 0xFF) + 
+                               (uint8_t)((tankRemainingPercentage >> 8) & 0xFF) + 
+                               (uint8_t)(pBattV & 0xFF) + 
+                               (uint8_t)((pBattV >> 8) & 0xFF) +
+                               (uint8_t)(creditBalance & 0xFF) + 
+                               (uint8_t)((creditBalance >> 8) & 0xFF) +
+                               (uint8_t)((creditBalance >> 16) & 0xFF) + 
+                               (uint8_t)((creditBalance >> 24) & 0xFF) +
+                               (uint8_t)(pCode & 0xFF) + 
+                               (uint8_t)((pCode >> 8) & 0xFF) +
+                               (uint8_t)((pCode >> 16) & 0xFF) + 
+                               (uint8_t)((pCode >> 24) & 0xFF) +
+                               (uint8_t)(flowVoltageMV & 0xFF) + 
+                               (uint8_t)((flowVoltageMV >> 8) & 0xFF)
+                              );
+
+        // Original UART3_Write() calls are preserved:
+        UART3_Write('S'); 
+        UART3_Write('G'); 
+        UART3_Write(pAlarm);
+        UART3_Write((uint8_t)((tankRemainingPercentage >> 8) & 0xFF)); 
+        UART3_Write((uint8_t)(tankRemainingPercentage & 0xFF));        
+        UART3_Write((uint8_t)((pBattV >> 8) & 0xFF)); 
+        UART3_Write((uint8_t)(pBattV & 0xFF));        
+        UART3_Write((uint8_t)((creditBalance >> 24) & 0xFF)); 
+        UART3_Write((uint8_t)((creditBalance >> 16) & 0xFF)); 
+        UART3_Write((uint8_t)((creditBalance >> 8) & 0xFF));  
+        UART3_Write((uint8_t)(creditBalance & 0xFF));         
+        UART3_Write((uint8_t)((pCode >> 24) & 0xFF));    
+        UART3_Write((uint8_t)((pCode >> 16) & 0xFF));    
+        UART3_Write((uint8_t)((pCode >> 8) & 0xFF));     
+        UART3_Write((uint8_t)(pCode & 0xFF));            
+        UART3_Write((uint8_t)((flowVoltageMV >> 8) & 0xFF)); 
+        UART3_Write((uint8_t)(flowVoltageMV & 0xFF));        
+        UART3_Write(CS); 
+    }
+    // Inlined sendPings() ends
     //sendWakeUp();
 }
 // Program Funxtion Intiiliize
