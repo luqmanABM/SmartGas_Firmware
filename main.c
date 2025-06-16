@@ -908,7 +908,161 @@ void MainActivity(void)
 	pBattV = (uint16_t)batteryMeasurement_val; // Assign to global pBattV
    	// Inlined code for getBattery() ends
 
-    FlowAndTankMeasurement();
+        // Inlined FlowAndTankMeasurement() starts
+    // -------------------------------------------------------------------------
+    // Section: Inlined calculateFlow()
+    // -------------------------------------------------------------------------
+    //   Part 1: Inlined getFlow() logic (for calculateFlow)
+    //   (Note: Global 'flowNoise' is used here, ensure it's appropriately set, e.g., to 4)
+    //   (Note: Global 'flowOffset' is used here, ensure it's up-to-date)
+
+    //     Original getFlow(): ADC_ChannelSelect(ADC_CHANNEL_ANC4);
+    ADPCH = 0x14; // ADC_CHANNEL_ANC4 for flowV: RC4
+    
+    __delay_ms(10); // Original getFlow(): Delay for ADC stabilization
+
+    //     Original getFlow(): ADC_ConversionStart();
+    ADCON0bits.ADGO = 1; // Start conversion
+
+    //     Original getFlow(): while (!ADC_IsConversionDone());
+    while(ADCON0bits.ADGO) // Wait for conversion to complete
+    {
+        // Loop until ADGO is cleared
+    }
+    
+    //     Original getFlow(): adc_result_t adcResult = ADC_ConversionResultGet();
+    int16_t adcResult_for_getFlow; 
+    adcResult_for_getFlow = ((int16_t)(((uint16_t)ADRESH << 8) | (uint16_t)ADRESL));
+    
+    //     Original getFlow(): Convert ADC result to voltage
+    float adcVoltage_for_getFlow = (adcResult_for_getFlow * 2.048f) / 4095.0f;
+    
+    //     Original getFlow(): Convert voltage to flow measurement in millivolts
+    float flowMeasurement_raw_for_getFlow = adcVoltage_for_getFlow * 1000.0f;
+
+    //     Original getFlow(): Adjust flow measurement based on offset and noise
+    float flowMeasurement_adjusted_noise_for_getFlow;
+    if (flowMeasurement_raw_for_getFlow > (flowOffset + flowNoise)) {
+        flowMeasurement_adjusted_noise_for_getFlow = flowMeasurement_raw_for_getFlow - (flowOffset + flowNoise);
+    } else {
+        flowMeasurement_adjusted_noise_for_getFlow = 0.0f;
+    }
+    
+    //   Part 2: Inlined adjustFlowMeasurement() logic (for getFlow)
+    float final_flow_val_before_round_for_getFlow;
+    if (flowMeasurement_adjusted_noise_for_getFlow < 4.0f) {
+        final_flow_val_before_round_for_getFlow = 0.0f;
+    } else {
+        float factor_for_getFlow = 1.0f;
+        if (flowMeasurement_adjusted_noise_for_getFlow <= 114.0f) {
+            factor_for_getFlow = 17.25f;
+        } else if (flowMeasurement_adjusted_noise_for_getFlow <= 452.0f) {
+            factor_for_getFlow = 5.74f;
+        } else {
+            final_flow_val_before_round_for_getFlow = 2593.0f; // Cap the value
+            goto end_adjustFlowMeasurement_in_getFlow_in_MainAct; 
+        }
+        final_flow_val_before_round_for_getFlow = flowMeasurement_adjusted_noise_for_getFlow * factor_for_getFlow;
+    }
+    end_adjustFlowMeasurement_in_getFlow_in_MainAct:;
+
+    //   Original getFlow(): Update global flowVoltageMV and this is the value "returned"
+    flowVoltageMV = (uint16_t)roundf(final_flow_val_before_round_for_getFlow);
+    //   Inlined getFlow() logic ends.
+
+    //   Part 3: Inlined convertFlowToJoules() logic (for calculateFlow)
+    //   Uses `flowVoltageMV` which was just updated by the inlined getFlow() part.
+    float flowSLPM_for_convertFlowToJoules = (float)flowVoltageMV; 
+
+    float LPG_SLPM_for_convertFlowToJoules = flowSLPM_for_convertFlowToJoules * (100.0f / 70.0f);
+    float LPG_m3_per_s_for_convertFlowToJoules = LPG_SLPM_for_convertFlowToJoules / (60000.0f); // 1000.0f * 60.0f
+    float LPG_enthalpy_for_convertFlowToJoules = 102.9e6f; // J/m^3
+    float calculated_flow_joules_result = LPG_m3_per_s_for_convertFlowToJoules * LPG_enthalpy_for_convertFlowToJoules / 1000.0f;
+    //   Inlined convertFlowToJoules() logic ends. Result is calculated_flow_joules_result
+    // -------------------------------------------------------------------------
+    // Section: End of Inlined calculateFlow()
+    // -------------------------------------------------------------------------
+
+    // Original FlowAndTankMeasurement(): flowJoules = (int32_t) roundf(calculateFlow());
+    flowJoules = (int32_t)roundf(calculated_flow_joules_result); // Assign to global
+    // Original FlowAndTankMeasurement(): flowCredit = flowJoules;
+    flowCredit = flowJoules; // Assign to global
+
+    // Original FlowAndTankMeasurement(): Logic for tank balance and credit
+    if (tankBalance >= flowJoules && flowJoules > 0 && creditBalance >= flowCredit && creditBalance > 10000) {
+        Timer_Countdown = 0; 
+        SHUTDOWN_FLAG = 0; 
+        tankBalance -= flowJoules;
+        if (FLOW_STATE_ANALYSIS == 0) { 
+            creditBalance -= flowCredit;
+        }
+    }
+
+    // Original FlowAndTankMeasurement(): Valve control based on credit
+    if (creditBalance <= flowCredit || creditBalance <= 10000) {
+        if (ValveState_Open == 1){ 
+            ValveState_Open = 0;
+            // Inlined CloseValve() starts (includes inlined StopValve)
+            // ---------------------------------------------------------------------
+            // Section: Inlined CloseValve()
+            // ---------------------------------------------------------------------
+            LATCbits.LATC7 = 1; // DC_Boost_SetHigh()
+            __delay_ms(100);    // Delay for boost converter
+            LATBbits.LATB1 = 0; // VALVE_OPEN_SetLow()
+            // Pin configuration for VALVE_CLOSE
+            TRISBbits.TRISB2 = 0; // VALVE_CLOSE_SetDigitalOutput()
+            ODCONBbits.ODCB2 = 0; // VALVE_CLOSE_SetPushPull()
+            WPUBbits.WPUB2 = 1;   // VALVE_CLOSE_SetPullup() (Retained)
+            LATBbits.LATB2 = 1;   // VALVE_CLOSE_SetHigh()
+            __delay_ms(2000);     // Time for valve to close
+            // Inlined StopValve()
+            LATBbits.LATB1 = 0;   // Stop VALVE_OPEN (already 0)
+            LATBbits.LATB2 = 0;   // Stop VALVE_CLOSE
+            // End Inlined StopValve()
+            LATCbits.LATC7 = 0; // DC_Boost_SetLow()
+            // ---------------------------------------------------------------------
+            // Section: End of Inlined CloseValve()
+            // ---------------------------------------------------------------------
+            alarms.aValve = 1; 
+        } else {
+            alarms.aValve = 0; // Valve already closed or being kept closed
+        }
+    } else { // Sufficient credit
+        if (ValveState_Open == 0){ // If valve is currently closed, open it
+            ValveState_Open = 1;
+            // Inlined OpenValve() starts (includes inlined StopValve)
+            // -------------------------------------------------------------------
+            // Section: Inlined OpenValve()
+            // -------------------------------------------------------------------
+            LATCbits.LATC7 = 1; // DC_Boost_SetHigh()
+            __delay_ms(100);    // Delay for boost converter
+            LATBbits.LATB2 = 0; // VALVE_CLOSE_SetLow()
+            __delay_ms(50);     // Small delay
+            // Pin configuration for VALVE_OPEN
+            TRISBbits.TRISB1 = 0; // VALVE_OPEN_SetDigitalOutput()
+            ODCONBbits.ODCB1 = 0; // VALVE_OPEN_SetPushPull()
+            WPUBbits.WPUB1 = 1;   // VALVE_OPEN_SetPullup() (Retained)
+            LATBbits.LATB1 = 1;   // VALVE_OPEN_SetHigh()
+            __delay_ms(2000);     // Time for valve to open
+            // Inlined StopValve()
+            LATBbits.LATB1 = 0;   // Stop VALVE_OPEN
+            LATBbits.LATB2 = 0;   // Stop VALVE_CLOSE (already 0)
+            // End Inlined StopValve()
+            LATCbits.LATC7 = 0; // DC_Boost_SetLow()
+            // -------------------------------------------------------------------
+            // Section: End of Inlined OpenValve()
+            // -------------------------------------------------------------------
+            alarms.aValve = 0;
+        } else { // Valve already open
+            alarms.aValve = 1; // Replicating original logic from FlowAndTankMeasurement.
+        }
+    }
+
+    // Original FlowAndTankMeasurement(): Calculate tank remaining percentage
+    double percentage = ((double)tankBalance / (double)tankCapacity) * 100.0;
+    uint16_t scaledPercentage = (uint16_t)(percentage * 100.0);
+    tankRemainingPercentage = scaledPercentage;
+    // Inlined FlowAndTankMeasurement() ends
     sendPings(); // Send data regardless of the condition
     //sendWakeUp();
 }
